@@ -1,0 +1,4 @@
+# The engine core is 100% Python standard library.
+# These extras power the REST API, web dashboard, and demo mock services.
+fastapi>=0.110
+uvicorn>=0.29

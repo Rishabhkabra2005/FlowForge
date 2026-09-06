@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FlowForge — Workflow Execution Engine</title>
+<style>
+  :root {
+    --bg: #14101f;
+    --panel: #1e1830;
+    --panel2: #251d3b;
+    --accent: #d94efc;
+    --accent2: #7c4dff;
+    --text: #f2eefb;
+    --muted: #9b92b8;
+    --ok: #35d07f;
+    --err: #ff5c7a;
+    --warn: #ffc24b;
+    --run: #4da3ff;
+    --mono: "Cascadia Code", "Consolas", "SF Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif; font-size: 14px;
+  }
+  header {
+    padding: 16px 24px; background: linear-gradient(90deg, var(--panel2), var(--panel));
+    border-bottom: 2px solid var(--accent);
+    display: flex; align-items: baseline; gap: 14px;
+  }
+  header h1 { margin: 0; font-size: 20px; letter-spacing: 0.5px; }
+  header h1 span { color: var(--accent); }
+  header .tag { color: var(--muted); font-size: 13px; }
+  main { display: grid; grid-template-columns: 1fr 420px; gap: 16px; padding: 16px 24px; align-items: start; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid #332a4d; border-radius: 10px; overflow: hidden; }
+  .panel h2 { margin: 0; padding: 10px 14px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); background: var(--panel2); border-bottom: 1px solid #332a4d; }
+  .panel .body { padding: 12px 14px; }
+  textarea {
+    width: 100%; min-height: 320px; background: #120e1c; color: #d9d2ec;
+    border: 1px solid #332a4d; border-radius: 8px; font-family: var(--mono); font-size: 12px; padding: 10px; resize: vertical;
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+  button {
+    background: linear-gradient(135deg, var(--accent2), var(--accent));
+    border: none; color: white; font-weight: 600; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  }
+  button.ghost { background: var(--panel2); border: 1px solid #44386a; color: var(--text); font-weight: 500; }
+  button.ghost:hover { border-color: var(--accent); }
+  button:hover { filter: brightness(1.1); }
+  .status-pill { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+  .st-running { background: rgba(77,163,255,.18); color: var(--run); }
+  .st-success { background: rgba(53,208,127,.15); color: var(--ok); }
+  .st-failed  { background: rgba(255,92,122,.16); color: var(--err); }
+  .st-skipped { background: rgba(155,146,184,.15); color: var(--muted); }
+  .st-pending { background: rgba(155,146,184,.1); color: var(--muted); }
+  .run-item { padding: 8px 12px; border-bottom: 1px solid #2a2240; cursor: pointer; }
+  .run-item:hover { background: var(--panel2); }
+  .run-item .name { font-weight: 600; }
+  .run-item .meta { color: var(--muted); font-size: 12px; margin-top: 2px; font-family: var(--mono); }
+  .steps { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+  .step-card { background: var(--panel2); border: 1px solid #332a4d; border-radius: 8px; padding: 10px 12px; }
+  .step-card .id { font-family: var(--mono); font-weight: 700; font-size: 13px; }
+  .step-card .sub { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .step-card .info { font-size: 12px; margin-top: 6px; color: var(--text); word-break: break-word; }
+  .logs { background: #120e1c; border-radius: 8px; padding: 10px; font-family: var(--mono); font-size: 12px; max-height: 320px; overflow-y: auto; line-height: 1.55; }
+  .logs .ts { color: #5b5278; }
+  .logs .err { color: var(--err); }
+  .logs .warn { color: var(--warn); }
+  .logs .step { color: var(--accent); }
+  .muted { color: var(--muted); }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  code { font-family: var(--mono); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Flow<span>Forge</span></h1>
+  <div class="tag">JSON-driven workflow execution engine · <span id="api-status">checking API…</span></div>
+</header>
+
+<main>
+  <div>
+    <div class="panel">
+      <h2>Workflow definition (JSON)</h2>
+      <div class="body">
+        <textarea id="workflow-json" spellcheck="false"></textarea>
+        <div class="row">
+          <button onclick="loadExample('deploy')">Deploy Pipeline</button>
+          <button onclick="loadExample('data')">Parallel Data Pipeline</button>
+          <button onclick="loadExample('retry')">Retry Demo</button>
+          <button class="ghost" onclick="validateWorkflow()">Validate</button>
+          <button onclick="submitWorkflow()">▶ Submit Run</button>
+          <span id="validate-result" class="muted"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <h2>Run detail <span id="run-detail-title" class="muted" style="text-transform:none"></span></h2>
+      <div class="body">
+        <div id="run-summary"></div>
+        <div id="step-cards" class="steps"></div>
+        <div style="margin-top:12px"><h2 style="background:none;padding:4px 0">Execution log</h2></div>
+        <div id="logs" class="logs"></div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel">
+      <h2>Run history</h2>
+      <div class="body" id="run-list"><span class="muted">no runs yet</span></div>
+    </div>
+  </div>
+</main>
+
+<script>
+// tiny helper, keeps the calls below shorter
+const $ = (id) => document.getElementById(id);
+let currentRunId = null;
+let pollTimer = null;
+
+// demo definitions shown by the buttons - same shape as examples/*.json
+const EXAMPLES = {
+  deploy: {
+    name: "CI-CD Deploy Pipeline",
+    description: "Build, test, deploy and notify — mixing shell steps and REST API calls",
+    version: "1.0.0",
+    variables: { environment: "staging", app: "flowforge-demo", notify_channel: "#releases" },
+    timeout: 300,
+    max_workers: 6,
+    steps: [
+      { id: "checkout", type: "shell", name: "Checkout source", command: "echo v1.2.0" },
+      { id: "unit_tests", type: "shell", name: "Run unit tests", command: "echo '23 tests passed, 0 failed'", depends_on: ["checkout"] },
+      { id: "lint", type: "shell", name: "Lint code", command: "echo 'lint: no issues found'", depends_on: ["checkout"] },
+      { id: "deploy", type: "http", name: "Deploy to environment", method: "POST", url: "http://127.0.0.1:8001/api/deploy", headers: { "X-App": "{{ variables.app }}" }, body: { environment: "{{ variables.environment }}", version: "{{ steps.checkout.output.stdout }}" }, depends_on: ["unit_tests", "lint"], retry: { max_attempts: 3, backoff_seconds: 1, backoff_factor: 2 }, timeout: 30, condition: "{{ steps.unit_tests.output.exit_code }} == 0" },
+      { id: "smoke_test", type: "http", name: "Smoke test deployment", method: "GET", url: "http://127.0.0.1:8001/api/deployments/{{ steps.deploy.output.json.deployment_id }}", depends_on: ["deploy"], retry: { max_attempts: 4, backoff_seconds: 1, backoff_factor: 1.5 } },
+      { id: "notify_success", type: "http", name: "Notify team (success)", method: "POST", url: "http://127.0.0.1:8001/api/notify", body: { channel: "{{ variables.notify_channel }}", message: "Deployed {{ variables.app }} to {{ variables.environment }}" }, depends_on: ["deploy"] },
+      { id: "notify_failure", type: "http", name: "Notify team (failure)", method: "POST", url: "http://127.0.0.1:8001/api/notify", body: { channel: "{{ variables.notify_channel }}", message: "Deployment FAILED" }, depends_on: ["deploy"], run: "on_failure" }
+    ]
+  },
+  data: {
+    name: "Parallel Data Pipeline",
+    description: "Fetch weather for many cities in parallel (foreach), analyze with Python, publish via REST",
+    version: "1.1.0",
+    variables: { cities: ["Guwahati", "Bengaluru", "Pune", "Hyderabad"], notify_channel: "#data-engineering" },
+    steps: [
+      { id: "fetch_weather", type: "foreach", name: "Fetch weather for all cities", items: "{{ variables.cities }}", parallel: true, steps: [
+        { id: "get", type: "http", name: "Fetch {{ this.item }}", method: "GET", url: "http://127.0.0.1:8001/api/weather?city={{ this.item }}", timeout: 20 }
+      ]},
+      { id: "analyze", type: "python", name: "Analyze temperatures", code: "import statistics\nresults = steps['fetch_weather']['output']['results']\ntemps = [r['get']['output']['json']['temperature_c'] for r in results]\nresult = {'cities': len(temps), 'avg_temp_c': round(statistics.mean(temps), 1), 'max_temp_c': max(temps), 'min_temp_c': min(temps)}", depends_on: ["fetch_weather"] },
+      { id: "notify", type: "http", name: "Publish report", method: "POST", url: "http://127.0.0.1:8001/api/notify", body: { channel: "{{ variables.notify_channel }}", message: "Weather report: avg {{ steps.analyze.output.result.avg_temp_c }}C across {{ steps.analyze.output.result.cities }} cities" }, depends_on: ["analyze"] }
+    ]
+  },
+  retry: {
+    name: "Resilient Retry Demo",
+    description: "A flaky REST endpoint tamed by automatic retries with exponential backoff",
+    version: "1.0.0",
+    variables: { environment: "production" },
+    steps: [
+      { id: "flaky_call", type: "http", name: "Call flaky endpoint", method: "POST", url: "http://127.0.0.1:8001/api/deploy", body: { environment: "{{ variables.environment }}", version: "v9.9.9" }, retry: { max_attempts: 4, backoff_seconds: 1, backoff_factor: 2 }, timeout: 30 },
+      { id: "verify", type: "shell", name: "Verify deployment", command: "echo 'deployment verified after retries — resilience works'", depends_on: ["flaky_call"], condition: "{{ steps.flaky_call.output.status_code }} >= 200 and {{ steps.flaky_call.output.status_code }} < 300" },
+      { id: "report", type: "http", name: "Report outcome", method: "POST", url: "http://127.0.0.1:8001/api/notify", body: { message: "Flaky call succeeded after {{ steps.flaky_call.attempts }} attempts" }, depends_on: ["flaky_call"] }
+    ]
+  }
+};
+
+function loadExample(kind) {
+  $("workflow-json").value = JSON.stringify(EXAMPLES[kind], null, 2);
+  $("validate-result").textContent = "";
+}
+
+function statusPill(status) {
+  return `<span class="status-pill st-${status}">${status}</span>`;
+}
+
+async function validateWorkflow() {
+  let parsed;
+  try {
+    parsed = JSON.parse($("workflow-json").value);
+  } catch (e) {
+    alert("invalid JSON: " + e.message);
+    return;
+  }
+  const res = await fetch("/api/workflows/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ definition: parsed })
+  });
+  const data = await res.json();
+  $("validate-result").innerHTML = data.valid
+    ? '<span style="color:var(--ok)">✓ valid</span>'
+    : '<span style="color:var(--err)">✗ ' + data.errors.length + ' errors</span>';
+  if (!data.valid) alert(data.errors.join("\n"));
+}
+
+async function submitWorkflow() {
+  let parsed;
+  try {
+    parsed = JSON.parse($("workflow-json").value);
+  } catch (e) {
+    alert("invalid JSON: " + e.message);
+    return;
+  }
+  const res = await fetch("/api/runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ definition: parsed })
+  });
+  if (!res.ok) {
+    const d = await res.json();
+    const detail = d.detail?.errors || [JSON.stringify(d)];
+    alert("workflow invalid:\n" + detail.join("\n"));
+    return;
+  }
+  const data = await res.json();
+  selectRun(data.run_id);
+  refreshRuns();
+}
+
+function selectRun(runId) {
+  currentRunId = runId;
+  pollRun();
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(pollRun, 1200);
+}
+
+// poll the run endpoint until it finishes, then stop
+async function pollRun() {
+  if (!currentRunId) return;
+  try {
+    const res = await fetch("/api/runs/" + currentRunId);
+    if (!res.ok) return;
+    const run = await res.json();
+    renderRun(run);
+    if (run.status !== "running" && pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  } catch (e) { /* server restarting - wait for the next tick */ }
+}
+
+function renderRun(run) {
+  $("run-detail-title").textContent = `· ${run.workflow_name} · ${run.run_id}`;
+  const dur = run.duration_ms != null ? (run.duration_ms / 1000).toFixed(1) + "s" : "…";
+  $("run-summary").innerHTML = `<div class="row">${statusPill(run.status)} <span class="muted">${run.workflow_version} · ${Object.keys(run.steps).length} steps · ${dur}</span></div>`;
+  const cards = Object.values(run.steps).map(s => {
+    const dur = s.duration_ms != null ? (s.duration_ms / 1000).toFixed(1) + "s" : "";
+    const info = s.error || s.reason || (s.attempts > 1 ? `succeeded after ${s.attempts} attempts` : "");
+    return `<div class="step-card">
+      <div class="id">${s.step_id}</div>
+      <div class="sub">${statusPill(s.status)} ${dur}${s.attempts > 1 ? " · " + s.attempts + " tries" : ""}</div>
+      <div class="info">${info || ""}</div>
+    </div>`;
+  }).join("");
+  $("step-cards").innerHTML = cards || '<span class="muted">no steps yet</span>';
+  $("logs").innerHTML = run.logs.map(l => {
+    const cls = l.level === "error" ? "err" : l.level === "warn" ? "warn" : "";
+    const stepTag = l.step_id ? `<span class="step">[${l.step_id}]</span> ` : "";
+    // escape < so log output can't break the DOM
+    const safe = l.message.replace(/</g, "&lt;");
+    return `<div class="${cls}"><span class="ts">${l.ts}</span> ${stepTag}${safe}</div>`;
+  }).join("") || '<span class="muted">no logs yet</span>';
+  $("logs").scrollTop = $("logs").scrollHeight;
+}
+
+async function refreshRuns() {
+  try {
+    const res = await fetch("/api/runs?limit=20");
+    const data = await res.json();
+    const items = data.runs.map(r =>
+      `<div class="run-item" onclick="selectRun('${r.run_id}')">
+        <div class="name">${r.workflow_name} ${statusPill(r.status)}</div>
+        <div class="meta">${r.run_id} · ${Object.keys(r.steps).length} steps · ${r.duration_ms != null ? (r.duration_ms/1000).toFixed(1)+"s" : "running"}</div>
+      </div>`).join("");
+    $("run-list").innerHTML = items || '<span class="muted">no runs yet — submit one!</span>';
+  } catch (e) { /* ignore */ }
+}
+
+async function init() {
+  try {
+    const res = await fetch("/api/health");
+    const data = await res.json();
+    $("api-status").textContent = `API online · v${data.version} · ${data.steps} step types`;
+    $("api-status").style.color = "var(--ok)";
+  } catch (e) {
+    $("api-status").textContent = "API offline";
+    $("api-status").style.color = "var(--err)";
+  }
+  loadExample("deploy");
+  refreshRuns();
+  setInterval(refreshRuns, 4000);
+}
+init();
+</script>
+</body>
+</html>

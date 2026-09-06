@@ -1,0 +1,42 @@
+{
+  "name": "Resilient Retry Demo",
+  "description": "A flaky REST endpoint tamed by automatic retries with exponential backoff, then a conditional verification step.",
+  "version": "1.0.0",
+  "variables": {
+    "environment": "production"
+  },
+  "steps": [
+    {
+      "id": "flaky_call",
+      "type": "http",
+      "name": "Call flaky endpoint",
+      "method": "POST",
+      "url": "http://127.0.0.1:8001/api/deploy",
+      "body": {
+        "environment": "{{ variables.environment }}",
+        "version": "v9.9.9"
+      },
+      "retry": { "max_attempts": 4, "backoff_seconds": 1, "backoff_factor": 2 },
+      "timeout": 30
+    },
+    {
+      "id": "verify",
+      "type": "shell",
+      "name": "Verify deployment",
+      "command": "echo 'deployment verified after retries - resilience works'",
+      "depends_on": ["flaky_call"],
+      "condition": "{{ steps.flaky_call.output.status_code }} >= 200 and {{ steps.flaky_call.output.status_code }} < 300"
+    },
+    {
+      "id": "report",
+      "type": "http",
+      "name": "Report outcome",
+      "method": "POST",
+      "url": "http://127.0.0.1:8001/api/notify",
+      "body": {
+        "message": "Flaky call succeeded after {{ steps.flaky_call.attempts }} attempts"
+      },
+      "depends_on": ["flaky_call"]
+    }
+  ]
+}

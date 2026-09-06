@@ -1,0 +1,47 @@
+{
+  "name": "Parallel Data Pipeline",
+  "description": "Fetch weather for many cities in parallel (foreach + http), analyze with a Python step, publish a report via REST.",
+  "version": "1.1.0",
+  "variables": {
+    "cities": ["Guwahati", "Bengaluru", "Pune", "Hyderabad"],
+    "notify_channel": "#data-engineering"
+  },
+  "steps": [
+    {
+      "id": "fetch_weather",
+      "type": "foreach",
+      "name": "Fetch weather for all cities",
+      "items": "{{ variables.cities }}",
+      "parallel": true,
+      "steps": [
+        {
+          "id": "get",
+          "type": "http",
+          "name": "Fetch {{ this.item }}",
+          "method": "GET",
+          "url": "http://127.0.0.1:8001/api/weather?city={{ this.item }}",
+          "timeout": 20
+        }
+      ]
+    },
+    {
+      "id": "analyze",
+      "type": "python",
+      "name": "Analyze temperatures",
+      "code": "import statistics\nresults = steps['fetch_weather']['output']['results']\ntemps = [r['get']['output']['json']['temperature_c'] for r in results]\nresult = {\n  'cities': len(temps),\n  'avg_temp_c': round(statistics.mean(temps), 1),\n  'max_temp_c': max(temps),\n  'min_temp_c': min(temps),\n}",
+      "depends_on": ["fetch_weather"]
+    },
+    {
+      "id": "notify",
+      "type": "http",
+      "name": "Publish report",
+      "method": "POST",
+      "url": "http://127.0.0.1:8001/api/notify",
+      "body": {
+        "channel": "{{ variables.notify_channel }}",
+        "message": "Weather report: avg {{ steps.analyze.output.result.avg_temp_c }}C across {{ steps.analyze.output.result.cities }} cities"
+      },
+      "depends_on": ["analyze"]
+    }
+  ]
+}

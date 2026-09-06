@@ -1,0 +1,17 @@
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# local run artifacts
+runs/
+*.log
+
+# editor / os
+.vscode/
+.idea/
+.DS_Store
+
+# freebuff tool scaffolding (not part of the project)
+.freebuff/

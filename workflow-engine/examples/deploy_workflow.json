@@ -1,0 +1,86 @@
+{
+  "name": "CI-CD Deploy Pipeline",
+  "description": "Build, test, deploy and notify - mixing shell steps and REST API calls with retries, conditions and failure notifications.",
+  "version": "1.0.0",
+  "variables": {
+    "environment": "staging",
+    "app": "flowforge-demo",
+    "notify_channel": "#releases"
+  },
+  "timeout": 300,
+  "max_workers": 6,
+  "steps": [
+    {
+      "id": "checkout",
+      "type": "shell",
+      "name": "Checkout source",
+      "command": "echo v1.2.0"
+    },
+    {
+      "id": "unit_tests",
+      "type": "shell",
+      "name": "Run unit tests",
+      "command": "echo '23 tests passed, 0 failed'",
+      "depends_on": ["checkout"]
+    },
+    {
+      "id": "lint",
+      "type": "shell",
+      "name": "Lint code",
+      "command": "echo 'lint: no issues found'",
+      "depends_on": ["checkout"]
+    },
+    {
+      "id": "deploy",
+      "type": "http",
+      "name": "Deploy to environment",
+      "method": "POST",
+      "url": "http://127.0.0.1:8001/api/deploy",
+      "headers": {
+        "X-App": "{{ variables.app }}"
+      },
+      "body": {
+        "environment": "{{ variables.environment }}",
+        "version": "{{ steps.checkout.output.stdout }}"
+      },
+      "depends_on": ["unit_tests", "lint"],
+      "retry": { "max_attempts": 3, "backoff_seconds": 1, "backoff_factor": 2 },
+      "timeout": 30,
+      "condition": "{{ steps.unit_tests.output.exit_code }} == 0"
+    },
+    {
+      "id": "smoke_test",
+      "type": "http",
+      "name": "Smoke test deployment",
+      "method": "GET",
+      "url": "http://127.0.0.1:8001/api/deployments/{{ steps.deploy.output.json.deployment_id }}",
+      "depends_on": ["deploy"],
+      "retry": { "max_attempts": 4, "backoff_seconds": 1, "backoff_factor": 1.5 }
+    },
+    {
+      "id": "notify_success",
+      "type": "http",
+      "name": "Notify team (success)",
+      "method": "POST",
+      "url": "http://127.0.0.1:8001/api/notify",
+      "body": {
+        "channel": "{{ variables.notify_channel }}",
+        "message": "Deployed {{ variables.app }} to {{ variables.environment }} (deployment {{ steps.deploy.output.json.deployment_id }})"
+      },
+      "depends_on": ["deploy"]
+    },
+    {
+      "id": "notify_failure",
+      "type": "http",
+      "name": "Notify team (failure)",
+      "method": "POST",
+      "url": "http://127.0.0.1:8001/api/notify",
+      "body": {
+        "channel": "{{ variables.notify_channel }}",
+        "message": "Deployment of {{ variables.app }} FAILED"
+      },
+      "depends_on": ["deploy"],
+      "run": "on_failure"
+    }
+  ]
+}
